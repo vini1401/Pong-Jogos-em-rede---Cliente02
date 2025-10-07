@@ -11,10 +11,15 @@ public class UdpClientTwoClients : MonoBehaviour
     Thread receiveThread;
     IPEndPoint serverEP;
     int myId = -1;
-    Vector3 remotePos = Vector3.zero;
+    Vector3 remotePos;
 
     public GameObject localCube;
     public GameObject remoteCube;
+
+    Rigidbody2D rb; // referência ao Rigidbody2D do bastão
+
+    public float moveSpeed = 5f;
+    bool recebeuPosicao = false; // controle para não mover antes da primeira atualização
 
     void Start()
     {
@@ -26,14 +31,23 @@ public class UdpClientTwoClients : MonoBehaviour
         receiveThread.Start();
 
         client.Send(Encoding.UTF8.GetBytes("HELLO"), 5);
+
+        // pega o Rigidbody do bastão
+        rb = localCube.GetComponent<Rigidbody2D>();
+
+        // 🔧 Correção principal:
+        // Garante que o bastão remoto comece onde está na cena (não vá para o centro)
+        remotePos = remoteCube.transform.position;
     }
 
-    void Update()
+    void FixedUpdate()
     {
-        // Movimento local
+        // Movimento local usando Rigidbody2D
         float h = Input.GetAxis("Horizontal");
         float v = Input.GetAxis("Vertical");
-        localCube.transform.Translate(new Vector3(h, v, 0) * Time.deltaTime * 5);
+
+        Vector2 movement = new Vector2(h, v) * moveSpeed * Time.fixedDeltaTime;
+        rb.MovePosition(rb.position + movement);
 
         // Envia posição ao servidor
         string msg = "POS:" +
@@ -43,11 +57,15 @@ public class UdpClientTwoClients : MonoBehaviour
         client.Send(Encoding.UTF8.GetBytes(msg), msg.Length);
 
         // Atualiza posição do outro jogador suavemente
-        remoteCube.transform.position = Vector3.Lerp(
-            remoteCube.transform.position,
-            remotePos,
-            Time.deltaTime * 10f
-        );
+        // 🔧 Só faz o Lerp se já tiver recebido a primeira posição real
+        if (recebeuPosicao)
+        {
+            remoteCube.transform.position = Vector3.Lerp(
+                remoteCube.transform.position,
+                remotePos,
+                Time.deltaTime * 10f
+            );
+        }
     }
 
     void ReceiveData()
@@ -74,6 +92,9 @@ public class UdpClientTwoClients : MonoBehaviour
                         float x = float.Parse(parts[1], CultureInfo.InvariantCulture);
                         float y = float.Parse(parts[2], CultureInfo.InvariantCulture);
                         remotePos = new Vector3(x, y, 0);
+
+                        // marca que já recebeu posição do outro jogador
+                        recebeuPosicao = true;
                     }
                 }
             }
